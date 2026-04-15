@@ -125,10 +125,10 @@ public class GestionDeContactos extends JFrame {
         // MENÚ CONTEXTUAL (clic derecho sobre la tabla)
         JPopupMenu popupMenu = new JPopupMenu();
 
-        JMenuItem itemEditar   = new JMenuItem("✏️  Editar contacto");
-        JMenuItem itemEliminar = new JMenuItem("🗑️  Eliminar contacto");
-        JMenuItem itemCopiar   = new JMenuItem("📋  Copiar fila");
-        JMenuItem itemExportar = new JMenuItem("💾  Exportar CSV");
+        JMenuItem itemEditar   = new JMenuItem("  Editar contacto");
+        JMenuItem itemEliminar = new JMenuItem("  Eliminar contacto");
+        JMenuItem itemCopiar   = new JMenuItem("  Copiar fila");
+        JMenuItem itemExportar = new JMenuItem("  Exportar CSV");
 
         popupMenu.add(itemEditar);
         popupMenu.add(itemEliminar);
