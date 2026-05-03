@@ -12,7 +12,7 @@ import java.util.ResourceBundle;
 public class GestionDeContactos extends JFrame {
     private static final long serialVersionUID = 1L;
 
-    //  PALETA DE COLORES
+    // ===================== PALETA DE COLORES (Fase 1) =====================
     private static final Color AZUL_OSCURO = new Color(44, 62, 80);
     private static final Color AZUL_CLARO  = new Color(52, 152, 219);
     private static final Color GRIS_FONDO  = new Color(236, 240, 241);
@@ -20,13 +20,13 @@ public class GestionDeContactos extends JFrame {
     private static final Color ROJO        = new Color(192, 57, 43);
     private static final Color BLANCO      = Color.WHITE;
 
-    // FUENTES 
+    // ===================== FUENTES (Fase 1) =====================
     private static final Font FUENTE_TITULO = new Font("Segoe UI", Font.BOLD, 16);
     private static final Font FUENTE_LABEL  = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font FUENTE_BOTON  = new Font("Segoe UI", Font.BOLD, 13);
     private static final Font FUENTE_TABLA  = new Font("Segoe UI", Font.PLAIN, 13);
 
-    // COMPONENTES 
+    // ===================== COMPONENTES =====================
     private JPanel contentPane;
     private JTable table;
     private DefaultTableModel tableModel;
@@ -36,7 +36,7 @@ public class GestionDeContactos extends JFrame {
     private JLabel lblBuscar;
     private JTextField filterField;
 
-    // I18N con ResourceBundle 
+    // ===================== I18N con ResourceBundle (Fase 4) =====================
     private ResourceBundle bundle;
     private void cargarBundle(int idx) {
         String[] langs = {"es", "en", "fr"};
@@ -76,7 +76,7 @@ public class GestionDeContactos extends JFrame {
         contentPane.setBorder(new EmptyBorder(0, 0, 0, 0));
         setContentPane(contentPane);
 
-        // PANEL SUPERIOR (BorderLayout) 
+        // ===== PANEL SUPERIOR (BorderLayout) =====
         JPanel panelTop = new JPanel(new BorderLayout());
         panelTop.setBackground(AZUL_OSCURO);
         panelTop.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
@@ -103,7 +103,7 @@ public class GestionDeContactos extends JFrame {
 
         contentPane.add(panelTop, BorderLayout.NORTH);
 
-        // PANEL CENTRAL CON TABS
+        // ===== PANEL CENTRAL CON TABS =====
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(FUENTE_LABEL);
         contentPane.add(tabbedPane, BorderLayout.CENTER);
@@ -203,18 +203,10 @@ public class GestionDeContactos extends JFrame {
 
         // MENÚ CONTEXTUAL
         JPopupMenu popupMenu = new JPopupMenu();
-<<<<<<< HEAD
         JMenuItem itemEditar   = new JMenuItem(t("menu.editar"));
         JMenuItem itemEliminar = new JMenuItem(t("menu.eliminar"));
         JMenuItem itemCopiar   = new JMenuItem(t("menu.copiar"));
         JMenuItem itemExportar = new JMenuItem(t("menu.exportar"));
-=======
-
-        JMenuItem itemEditar   = new JMenuItem("  Editar contacto");
-        JMenuItem itemEliminar = new JMenuItem("  Eliminar contacto");
-        JMenuItem itemCopiar   = new JMenuItem("  Copiar fila");
-        JMenuItem itemExportar = new JMenuItem("  Exportar CSV");
->>>>>>> branch 'main' of https://github.com/dyllanlastra2018-tech/TAREA-UNIDAD-1-.git
 
         popupMenu.add(itemEditar);
         popupMenu.add(itemEliminar);
