@@ -203,10 +203,18 @@ public class GestionDeContactos extends JFrame {
 
         // MENÚ CONTEXTUAL
         JPopupMenu popupMenu = new JPopupMenu();
+<<<<<<< HEAD
         JMenuItem itemEditar   = new JMenuItem(t("menu.editar"));
         JMenuItem itemEliminar = new JMenuItem(t("menu.eliminar"));
         JMenuItem itemCopiar   = new JMenuItem(t("menu.copiar"));
         JMenuItem itemExportar = new JMenuItem(t("menu.exportar"));
+=======
+
+        JMenuItem itemEditar   = new JMenuItem("  Editar contacto");
+        JMenuItem itemEliminar = new JMenuItem("  Eliminar contacto");
+        JMenuItem itemCopiar   = new JMenuItem("  Copiar fila");
+        JMenuItem itemExportar = new JMenuItem("  Exportar CSV");
+>>>>>>> branch 'main' of https://github.com/dyllanlastra2018-tech/TAREA-UNIDAD-1-.git
 
         popupMenu.add(itemEditar);
         popupMenu.add(itemEliminar);
