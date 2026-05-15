@@ -8,6 +8,9 @@ import java.awt.event.*;
 import java.io.*;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class GestionDeContactos extends JFrame {
     private static final long serialVersionUID = 1L;
@@ -19,6 +22,7 @@ public class GestionDeContactos extends JFrame {
     private static final Color VERDE       = new Color(39, 174, 96);
     private static final Color ROJO        = new Color(192, 57, 43);
     private static final Color BLANCO      = Color.WHITE;
+    private static final Color NARANJA     = new Color(230, 126, 34);
 
     // ===================== FUENTES (Fase 1) =====================
     private static final Font FUENTE_TITULO = new Font("Segoe UI", Font.BOLD, 16);
@@ -30,14 +34,24 @@ public class GestionDeContactos extends JFrame {
     private JPanel contentPane;
     private JTable table;
     private DefaultTableModel tableModel;
-    private JLabel lblTitulo, lblIdioma;
+    private JLabel lblTitulo, lblIdioma, lblNotificacion;
     private JButton btnAgregar, btnEliminar, btnExportar;
     private JComboBox<String> comboIdioma;
     private JLabel lblBuscar;
     private JTextField filterField;
+    private TableRowSorter<DefaultTableModel> sorter;
+
+    // ===================== CONCURRENCIA (Unidad 3) =====================
+    // ExecutorService para manejar hilos
+    private final ExecutorService executor = Executors.newFixedThreadPool(3);
+    // Lock para sincronizar acceso a contactos
+    private final ReentrantLock lock = new ReentrantLock();
+    // Lock para exportacion
+    private final Object exportLock = new Object();
 
     // ===================== I18N con ResourceBundle (Fase 4) =====================
     private ResourceBundle bundle;
+
     private void cargarBundle(int idx) {
         String[] langs = {"es", "en", "fr"};
         bundle = ResourceBundle.getBundle("gestioncontactos.messages",
@@ -68,7 +82,7 @@ public class GestionDeContactos extends JFrame {
     private void construirUI() {
         setTitle(t("titulo"));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setBounds(100, 100, 750, 520);
+        setBounds(100, 100, 750, 560);
         setLocationRelativeTo(null);
 
         contentPane = new JPanel(new BorderLayout());
@@ -103,17 +117,26 @@ public class GestionDeContactos extends JFrame {
 
         contentPane.add(panelTop, BorderLayout.NORTH);
 
-        // ===== PANEL CENTRAL CON TABS =====
+        // PANEL NOTIFICACION
+        JPanel panelNotif = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
+        panelNotif.setBackground(new Color(44, 62, 80, 200));
+        lblNotificacion = new JLabel(" ");
+        lblNotificacion.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        lblNotificacion.setForeground(BLANCO);
+        panelNotif.add(lblNotificacion);
+        contentPane.add(panelNotif, BorderLayout.SOUTH);
+
+        // PANEL CENTRAL CON TABS
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(FUENTE_LABEL);
         contentPane.add(tabbedPane, BorderLayout.CENTER);
 
-        // ─ PESTAÑA 1: Contactos ─
+        // PESTAÑA 1
         JPanel panelContactos = new JPanel(new BorderLayout(5, 5));
         panelContactos.setBackground(GRIS_FONDO);
         panelContactos.setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        // Filtro
+        // Filtro con busqueda en segundo plano
         JPanel panelFiltro = new JPanel(new BorderLayout(5, 0));
         panelFiltro.setBackground(GRIS_FONDO);
         panelFiltro.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
@@ -152,14 +175,15 @@ public class GestionDeContactos extends JFrame {
         table.getTableHeader().setForeground(BLANCO);
         table.getTableHeader().setReorderingAllowed(false);
 
-        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
+        sorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(sorter);
 
+        // BUSQUEDA EN SEGUNDO PLANO con SwingWorker
         filterField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyReleased(KeyEvent ke) {
-                String text = filterField.getText().trim();
-                sorter.setRowFilter(text.isEmpty() ? null : RowFilter.regexFilter("(?i)" + text));
+                String texto = filterField.getText().trim();
+                buscarEnSegundoPlano(texto);
             }
         });
 
@@ -182,7 +206,7 @@ public class GestionDeContactos extends JFrame {
 
         tabbedPane.addTab(t("tab.contactos"), panelContactos);
 
-        // ─ PESTAÑA 2: Estadísticas ─
+        // PESTAÑA 2
         JPanel panelEstadisticas = new JPanel(new GridLayout(4, 1, 10, 10));
         panelEstadisticas.setBackground(GRIS_FONDO);
         panelEstadisticas.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -233,18 +257,31 @@ public class GestionDeContactos extends JFrame {
         panelContactos.addMouseListener(popupListener);
 
         // ACCIONES MENÚ CONTEXTUAL
+        // SINCRONIZACION al editar
         itemEditar.addActionListener(e -> {
             int fila = table.getSelectedRow();
             if (fila < 0) return;
             int fm = table.convertRowIndexToModel(fila);
-            String nombre   = JOptionPane.showInputDialog(this, t("label.nombre"),   tableModel.getValueAt(fm, 0));
-            String telefono = JOptionPane.showInputDialog(this, t("label.telefono"), tableModel.getValueAt(fm, 1));
-            String correo   = JOptionPane.showInputDialog(this, t("label.email"),    tableModel.getValueAt(fm, 2));
-            if (nombre != null && telefono != null && correo != null) {
-                tableModel.setValueAt(nombre,   fm, 0);
-                tableModel.setValueAt(telefono, fm, 1);
-                tableModel.setValueAt(correo,   fm, 2);
-            }
+
+            // Bloqueo del recurso para edicion segura
+            executor.submit(() -> {
+                lock.lock();
+                try {
+                    String nombre   = JOptionPane.showInputDialog(this, t("label.nombre"),   tableModel.getValueAt(fm, 0));
+                    String telefono = JOptionPane.showInputDialog(this, t("label.telefono"), tableModel.getValueAt(fm, 1));
+                    String correo   = JOptionPane.showInputDialog(this, t("label.email"),    tableModel.getValueAt(fm, 2));
+                    if (nombre != null && telefono != null && correo != null) {
+                        SwingUtilities.invokeLater(() -> {
+                            tableModel.setValueAt(nombre,   fm, 0);
+                            tableModel.setValueAt(telefono, fm, 1);
+                            tableModel.setValueAt(correo,   fm, 2);
+                            mostrarNotificacion("✔ Contacto editado correctamente.", VERDE);
+                        });
+                    }
+                } finally {
+                    lock.unlock();
+                }
+            });
         });
 
         itemEliminar.addActionListener(e -> {
@@ -252,8 +289,10 @@ public class GestionDeContactos extends JFrame {
             if (fila < 0) return;
             int confirm = JOptionPane.showConfirmDialog(this,
                 t("msg.confirmar"), t("msg.seleccionar.titulo"), JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION)
+            if (confirm == JOptionPane.YES_OPTION) {
                 tableModel.removeRow(table.convertRowIndexToModel(fila));
+                mostrarNotificacion("✔ Contacto eliminado.", ROJO);
+            }
         });
 
         itemCopiar.addActionListener(e -> {
@@ -265,11 +304,11 @@ public class GestionDeContactos extends JFrame {
                            tableModel.getValueAt(fm, 2);
             java.awt.datatransfer.StringSelection sel = new java.awt.datatransfer.StringSelection(texto);
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(sel, null);
-            JOptionPane.showMessageDialog(this, t("msg.copiado"));
+            mostrarNotificacion("✔ " + t("msg.copiado"), AZUL_CLARO);
         });
 
-        itemExportar.addActionListener(e -> exportToCSV());
-        btnExportar.addActionListener(e -> exportToCSV());
+        itemExportar.addActionListener(e -> exportToCSVConcurrente());
+        btnExportar.addActionListener(e -> exportToCSVConcurrente());
 
         btnCargar.addActionListener(e -> {
             progressBar.setValue(0);
@@ -296,6 +335,130 @@ public class GestionDeContactos extends JFrame {
         });
     }
 
+    // BUSQUEDA EN SEGUNDO PLANO
+    // SwingWorker para buscar sin congelar la UI
+    private void buscarEnSegundoPlano(String texto) {
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                // Simula busqueda en segundo plano
+                Thread.sleep(100);
+                return null;
+            }
+            @Override
+            protected void done() {
+                // Actualiza el filtro en el hilo de la UI
+                SwingUtilities.invokeLater(() -> {
+                    sorter.setRowFilter(texto.isEmpty() ? null : RowFilter.regexFilter("(?i)" + texto));
+                    if (!texto.isEmpty()) {
+                        mostrarNotificacion("🔍 Buscando: " + texto, AZUL_CLARO);
+                    } else {
+                        mostrarNotificacion(" ", AZUL_OSCURO);
+                    }
+                });
+            }
+        }.execute();
+    }
+
+    // VALIDACION EN SEGUNDO PLANO
+    // Thread que valida si el contacto ya existe antes de guardarlo
+    private void validarYAgregarContacto(String nombre, String telefono, String correo) {
+        executor.submit(() -> {
+            mostrarNotificacion("⏳ Validando contacto...", NARANJA);
+            try {
+                Thread.sleep(800);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Verificar duplicados con lock
+            lock.lock();
+            try {
+                boolean duplicado = false;
+                for (int i = 0; i < tableModel.getRowCount(); i++) {
+                    String nombreExistente   = tableModel.getValueAt(i, 0).toString().toLowerCase();
+                    String telefonoExistente = tableModel.getValueAt(i, 1).toString();
+                    if (nombreExistente.equals(nombre.toLowerCase()) ||
+                        telefonoExistente.equals(telefono)) {
+                        duplicado = true;
+                        break;
+                    }
+                }
+
+                final boolean esDuplicado = duplicado;
+                SwingUtilities.invokeLater(() -> {
+                    if (esDuplicado) {
+                        mostrarNotificacion("⚠ Contacto duplicado - no se agregó.", ROJO);
+                    } else {
+                        tableModel.addRow(new Object[]{nombre, telefono, correo});
+                        mostrarNotificacion("✔ Contacto guardado con éxito.", VERDE);
+                    }
+                });
+            } finally {
+                lock.unlock();
+            }
+        });
+    }
+
+    // EXPORTACION CONCURRENTE
+    private void exportToCSVConcurrente() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setSelectedFile(new File("contactos.csv"));
+        int result = chooser.showSaveDialog(this);
+        if (result != JFileChooser.APPROVE_OPTION) return;
+
+        File archivo = chooser.getSelectedFile();
+
+        // Capturar datos de la tabla antes de entrar al hilo
+        int rowCount = tableModel.getRowCount();
+        int colCount = tableModel.getColumnCount();
+        String[][] datos = new String[rowCount][colCount];
+        String[] headers = new String[colCount];
+        for (int j = 0; j < colCount; j++) headers[j] = tableModel.getColumnName(j);
+        for (int i = 0; i < rowCount; i++)
+            for (int j = 0; j < colCount; j++)
+                datos[i][j] = tableModel.getValueAt(i, j).toString();
+
+        mostrarNotificacion("⏳ Exportando contactos...", NARANJA);
+
+        // Exportacion en segundo plano
+        executor.submit(() -> {
+            // Sincronizacion para evitar corrupcion si hay multiples exportaciones
+            synchronized (exportLock) {
+                try (BufferedWriter writer = new BufferedWriter(new FileWriter(archivo))) {
+                    // Escribir cabeceras
+                    writer.write(String.join(",", headers));
+                    writer.write("\n");
+                    // Escribir filas
+                    for (String[] fila : datos) {
+                        writer.write(String.join(",", fila));
+                        writer.write("\n");
+                    }
+                    // Notificar en el hilo de UI con SwingUtilities.invokeLater
+                    SwingUtilities.invokeLater(() ->
+                        mostrarNotificacion("✔ Exportación completada: " + archivo.getName(), VERDE));
+                } catch (IOException e) {
+                    SwingUtilities.invokeLater(() ->
+                        mostrarNotificacion("✘ Error al exportar: " + e.getMessage(), ROJO));
+                }
+            }
+        });
+    }
+
+    // NOTIFICACIONES EN TIEMPO REAL
+    private void mostrarNotificacion(String mensaje, Color color) {
+        SwingUtilities.invokeLater(() -> {
+            lblNotificacion.setText(mensaje);
+            lblNotificacion.setForeground(color);
+            // Ocultar notificacion despues de 3 segundos
+            Timer timer = new Timer(3000, e -> {
+                lblNotificacion.setText(" ");
+            });
+            timer.setRepeats(false);
+            timer.start();
+        });
+    }
+
     private void configurarEventos() {
 
         // Cambio de idioma
@@ -304,14 +467,17 @@ public class GestionDeContactos extends JFrame {
             actualizarTextos();
         });
 
-        // Agregar
+        // AGREGAR con validacion en segundo plano
         btnAgregar.addActionListener(e -> {
             String nombre   = JOptionPane.showInputDialog(this, t("label.nombre"));
             String telefono = JOptionPane.showInputDialog(this, t("label.telefono"));
             String correo   = JOptionPane.showInputDialog(this, t("label.email"));
+
             if (nombre != null && !nombre.trim().isEmpty() &&
-                telefono != null && correo != null) {
-                tableModel.addRow(new Object[]{nombre, telefono, correo});
+                telefono != null && !telefono.trim().isEmpty() &&
+                correo != null && !correo.trim().isEmpty()) {
+                // Validacion en segundo plano antes de guardar
+                validarYAgregarContacto(nombre.trim(), telefono.trim(), correo.trim());
             }
         });
 
@@ -323,6 +489,7 @@ public class GestionDeContactos extends JFrame {
                 return;
             }
             tableModel.removeRow(table.convertRowIndexToModel(fila));
+            mostrarNotificacion("✔ Contacto eliminado.", ROJO);
         });
     }
 
@@ -352,28 +519,10 @@ public class GestionDeContactos extends JFrame {
         return b;
     }
 
-    public void exportToCSV() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setSelectedFile(new File("contactos.csv"));
-        int result = chooser.showSaveDialog(this);
-        if (result != JFileChooser.APPROVE_OPTION) return;
-        File archivo = chooser.getSelectedFile();
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(archivo))) {
-            for (int j = 0; j < tableModel.getColumnCount(); j++) {
-                writer.write(tableModel.getColumnName(j));
-                if (j < tableModel.getColumnCount() - 1) writer.write(",");
-            }
-            writer.write("\n");
-            for (int i = 0; i < table.getRowCount(); i++) {
-                for (int j = 0; j < table.getColumnCount(); j++) {
-                    writer.write(table.getValueAt(i, j).toString());
-                    if (j < table.getColumnCount() - 1) writer.write(",");
-                }
-                writer.write("\n");
-            }
-            JOptionPane.showMessageDialog(this, t("msg.exportado") + "\n" + archivo.getAbsolutePath());
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, t("msg.error") + ": " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-        }
+    // Cerrar el executor al cerrar la aplicacion
+    @Override
+    public void dispose() {
+        executor.shutdown();
+        super.dispose();
     }
 }
